@@ -2,7 +2,6 @@ import { create } from 'zustand';
 
 export interface Message {
 	id: string;
-	senderId: string;
 	senderName: string;
 	senderAvatar: string;
 	content: string;
@@ -15,177 +14,95 @@ export interface Chat {
 	name: string;
 	avatar: string;
 	lastMessage: string;
-	timestamp: string;
-	isOnline: boolean;
-	unread: boolean;
-	messagePreview: string;
-	messages?: Message[];
-	isTyping?: boolean;
+	messages: Message[];
 }
 
 interface ChatStore {
+	userName: string | null;
 	chats: Chat[];
 	selectedChatId: string | null;
-	userName: string | null;
+	sentMessage: (chatId: string, content: string) => void;
+	receiveMessage: (userName: string, message: { message: string }) => void;
+	setUserName: (name: string) => void;
 	selectChat: (id: string) => void;
 	markAsRead: (id: string) => void;
-	sendMessage: (chatId: string, content: string) => void;
-	setTyping: (chatId: string, isTyping: boolean) => void;
-	setUserName: (name: string) => void;
 }
 
 const mockChats: Chat[] = [
 	{
 		id: '1',
-		name: 'Sarah Miller',
-		avatar: 'SM',
-		lastMessage: 'Has anyone looke...',
-		timestamp: 'JUST NOW',
-		isOnline: true,
-		unread: true,
-		messagePreview: 'Has anyone looked at the new design system yet?',
-		isTyping: false,
-		messages: [
-			{
-				id: 'm1',
-				senderId: 'sarah',
-				senderName: 'Sarah',
-				senderAvatar: 'SM',
-				content:
-					'Has anyone looked at the new React hooks for server components yet?',
-				timestamp: '10:42 AM',
-				isOwn: false,
-			},
-			{
-				id: 'm2',
-				senderId: 'user',
-				senderName: 'You',
-				senderAvatar: 'U',
-				content:
-					'Just started reading the docs! The useOptimistic hook looks incredibly useful for chat UIs like this one.',
-				timestamp: '10:45 AM',
-				isOwn: true,
-			},
-			{
-				id: 'm3',
-				senderId: 'alex',
-				senderName: 'Alex',
-				senderAvatar: 'AR',
-				content:
-					"I'm planning to refactor the dashboard components this afternoon.",
-				timestamp: '10:46 AM',
-				isOwn: false,
-			},
-			{
-				id: 'm4',
-				senderId: 'alex',
-				senderName: 'Alex',
-				senderAvatar: 'AR',
-				content: 'Should make the UI much snappier. 🚀',
-				timestamp: '10:47 AM',
-				isOwn: false,
-			},
-		],
-	},
-	{
-		id: '2',
-		name: '#coding-front...',
-		avatar: '💻',
-		lastMessage: "Alex: I'm planning to refa...",
-		timestamp: '10:45 PM',
-		isOnline: false,
-		unread: true,
-		messagePreview: "Alex: I'm planning to refactor the API endpoints",
-	},
-	{
-		id: '3',
-		name: 'Alex Rivera',
-		avatar: 'AR',
-		lastMessage: 'The new UI library d...',
-		timestamp: '9:12 AM',
-		isOnline: true,
-		unread: false,
-		messagePreview: 'The new UI library documentation is really helpful',
-	},
-	{
-		id: '4',
-		name: 'Jordan Smith',
-		avatar: 'JS',
-		lastMessage: "I'll be out of office until M...",
-		timestamp: 'Yesterday',
-		isOnline: false,
-		unread: false,
-		messagePreview: "I'll be out of office until Monday afternoon",
-	},
-	{
-		id: '5',
-		name: '#gaming-lounge',
-		avatar: '🎮',
-		lastMessage: 'Sarah: Anyone up for so...',
-		timestamp: 'Oct 12',
-		isOnline: false,
-		unread: false,
-		messagePreview: 'Sarah: Anyone up for some gaming tonight?',
-	},
-	{
-		id: '6',
-		name: 'Marcus Chen',
-		avatar: 'MC',
-		lastMessage: 'Sent an attachment: quar...',
-		timestamp: 'Oct 11',
-		isOnline: true,
-		unread: false,
-		messagePreview: 'Sent an attachment: quarterly-report.pdf',
+		name: 'General Chat',
+		avatar: '💬',
+		lastMessage: '',
+		messages: [],
 	},
 ];
 
 export const useChatStore = create<ChatStore>((set) => ({
 	chats: mockChats,
-	selectedChatId: null,
+	selectedChatId: '1',
 	userName: null,
-	selectChat: (id: string) =>
+
+	// send a message from the user
+	sentMessage: (chatId, content) =>
 		set((state) => ({
-			selectedChatId: id,
 			chats: state.chats.map((chat) =>
-				chat.id === id ? { ...chat, unread: false } : chat,
+				chat.id === chatId
+					? {
+							...chat,
+							messages: [
+								...chat.messages,
+								{
+									id: `m${Date.now()}`,
+									senderName: 'You',
+									senderAvatar: 'JD',
+									content,
+									timestamp: new Date().toLocaleTimeString([], {
+										hour: '2-digit',
+										minute: '2-digit',
+									}),
+									isOwn: true,
+								},
+							],
+							lastMessage: content,
+						}
+					: chat,
 			),
 		})),
+
+	// receive a message from WebSocket
+	receiveMessage: (userName: string, message: { message: string }) =>
+		set((state) => ({
+			chats: state.chats.map((chat) =>
+				chat.id === state.selectedChatId
+					? {
+							...chat,
+							messages: [
+								...chat.messages,
+								{
+									id: `m${Date.now()}`,
+									senderName: userName,
+									senderAvatar: userName[0],
+									content: message.message,
+									timestamp: new Date().toLocaleTimeString([], {
+										hour: '2-digit',
+										minute: '2-digit',
+									}),
+									isOwn: false,
+								},
+							],
+							lastMessage: message.message,
+						}
+					: chat,
+			),
+		})),
+
+	setUserName: (name: string) => set({ userName: name }),
+	selectChat: (id: string) => set({ selectedChatId: id }),
 	markAsRead: (id: string) =>
 		set((state) => ({
 			chats: state.chats.map((chat) =>
-				chat.id === id ? { ...chat, unread: false } : chat,
+				chat.id === id ? { ...chat, lastMessage: chat.lastMessage } : chat,
 			),
 		})),
-	sendMessage: (chatId: string, content: string) =>
-		set((state) => ({
-			chats: state.chats.map((chat) => {
-				if (chat.id === chatId) {
-					const newMessage: Message = {
-						id: `m${Date.now()}`,
-						senderId: 'user',
-						senderName: 'You',
-						senderAvatar: 'JD',
-						content,
-						timestamp: new Date().toLocaleTimeString('en-US', {
-							hour: '2-digit',
-							minute: '2-digit',
-						}),
-						isOwn: true,
-					};
-					return {
-						...chat,
-						messages: [...(chat.messages || []), newMessage],
-						lastMessage: content.substring(0, 30) + '...',
-					};
-				}
-				return chat;
-			}),
-		})),
-	setTyping: (chatId: string, isTyping: boolean) =>
-		set((state) => ({
-			chats: state.chats.map((chat) =>
-				chat.id === chatId ? { ...chat, isTyping } : chat,
-			),
-		})),
-	setUserName: (name: string) => set({ userName: name }),
 }));

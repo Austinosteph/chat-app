@@ -3,8 +3,19 @@
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatStore, type Chat } from '@/lib/store';
+import { useEffect } from 'react';
+import { socket } from '@/lib/socket';
 
 function ChatItem({ chat }: { chat: Chat }) {
+	//websocket configuration
+	useEffect(() => {
+		socket.connect();
+
+		socket.on('connect', () => {
+			console.log('Connected:', socket.id);
+		});
+	}, []);
+
 	const { selectedChatId, selectChat, markAsRead } = useChatStore();
 
 	const handleClick = () => {
@@ -44,30 +55,14 @@ function ChatItem({ chat }: { chat: Chat }) {
 				>
 					{chat.avatar}
 				</div>
-
-				{/* Content */}
-				<div className="flex-1 min-w-0">
-					<div className="flex justify-between items-start gap-2">
-						<h3 className="font-semibold text-slate-900 text-sm">
-							{chat.name}
-						</h3>
-						<span
-							className={`text-xs whitespace-nowrap ${
-								chat.unread ? 'text-blue-500 font-semibold' : 'text-slate-400'
-							}`}
-						>
-							{chat.timestamp}
-						</span>
-					</div>
-
-					<div className="flex justify-between items-start gap-2 mt-1">
-						<p className="text-xs text-slate-500 truncate">
-							{chat.lastMessage}
-						</p>
-						{chat.isOnline && (
-							<div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1" />
-						)}
-					</div>
+				{/* Chat info */}
+				<div className="flex-1">
+					<p className="font-semibold text-gray-900">{chat.name}</p>{' '}
+					{/* ✅ show name */}
+					<p className="text-sm text-gray-500 truncate">
+						{chat.lastMessage}
+					</p>{' '}
+					{/* optional */}
 				</div>
 			</div>
 		</div>
@@ -76,7 +71,6 @@ function ChatItem({ chat }: { chat: Chat }) {
 
 export function ChatList() {
 	const chats = useChatStore((state) => state.chats);
-	const unreadCount = chats.filter((chat) => chat.unread).length;
 
 	return (
 		<div className="flex-1 flex flex-col bg-white">
@@ -84,9 +78,6 @@ export function ChatList() {
 			<div className="p-6 border-b border-slate-200 flex justify-between items-start">
 				<div>
 					<h2 className="text-2xl font-bold text-slate-900">Recent Chats</h2>
-					<p className="text-sm text-slate-500 mt-1">
-						You have {unreadCount} unread message{unreadCount !== 1 ? 's' : ''}
-					</p>
 				</div>
 				<Button
 					size="icon"
