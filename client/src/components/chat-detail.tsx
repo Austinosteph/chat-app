@@ -91,7 +91,7 @@ export function ChatDetail() {
 			socket.off('user_typing');
 			clearTimeout(typingTimer);
 		};
-	}, [socket]);
+	}, []);
 
 	if (!selectedChat) {
 		return (
