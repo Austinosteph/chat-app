@@ -8,7 +8,22 @@ import { Input } from '@/components/ui/input';
 import { SendIcon, PlusIcon, SmileIcon, ChevronLeft } from 'lucide-react';
 
 export function ChatDetail() {
-	const { userName } = useChatStore();
+	//  STORE STATE
+	const { userName, chats, selectedChatId, sentMessage } = useChatStore();
+
+	const selectedChat = chats.find((chat) => chat.id === selectedChatId);
+
+	//  LOCAL STATE
+	const [messageInput, setMessageInput] = useState('');
+	const [typingStatus, setTypingStatus] = useState('');
+	const [notifications, setNotifications] = useState<
+		{ id: string; text: string }[]
+	>([]);
+
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+	const hasEmittedOnline = useRef(false);
+
+	//  USER INITIALS
 	const initials = userName
 		? userName
 				.match(/\b\w/g)
@@ -16,25 +31,18 @@ export function ChatDetail() {
 				.map((char) => char.toUpperCase())
 				.join('')
 		: '';
-	const { chats, selectedChatId, sentMessage } = useChatStore();
-	const [messageInput, setMessageInput] = useState('');
-	const [typingStatus, setTypingStatus] = useState('');
-	const messagesEndRef = useRef<HTMLDivElement>(null);
 
-	const selectedChat = chats.find((chat) => chat.id === selectedChatId);
-
-	// Scroll to bottom whenever messages change
+	//  AUTO SCROLL
 	useEffect(() => {
 		messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 	}, [selectedChat?.messages]);
 
-	//listens for incomming message
+	//  INCOMING MESSAGES
 	useEffect(() => {
 		const handleIncomingMessage = (data: {
 			userName: string;
 			message: string;
 		}) => {
-			// Avoid adding your own messages again
 			if (data.userName !== userName) {
 				useChatStore
 					.getState()
@@ -42,57 +50,80 @@ export function ChatDetail() {
 			}
 		};
 
-		// Listen for incoming messages
 		socket.on('message', handleIncomingMessage);
 
-		// Clean up the listener when component unmounts or userName changes
 		return () => {
 			socket.off('message', handleIncomingMessage);
 		};
 	}, [userName]);
 
-	// Sent message
-	const handleSendMessage = () => {
-		if (messageInput.trim() && selectedChatId && userName) {
-			socket.emit('message', {
-				userName,
-				message: messageInput,
-			});
-
-			sentMessage(selectedChatId, messageInput);
-			setMessageInput('');
+	//  ONLINE STATUS
+	useEffect(() => {
+		if (!hasEmittedOnline.current && userName) {
+			socket.emit('user_online', userName);
+			hasEmittedOnline.current = true;
 		}
-	};
 
-	// Handle Input Changes
-	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-		setMessageInput(e.target.value);
+		const handleStatus = (userStatus: { username: string; status: string }) => {
+			const id = crypto.randomUUID();
+			const text = `${userStatus.username} is ${userStatus.status}`;
 
-		// Emit "typing" event to the server
-		socket.emit('typing', { userName });
-	};
+			setNotifications((prev) => [...prev, { id, text }]);
 
-	//listen for typingStatus
+			// Remove after 3 seconds
+			setTimeout(() => {
+				setNotifications((prev) => prev.filter((n) => n.id !== id));
+			}, 10000);
+		};
+
+		socket.on('user_status', handleStatus);
+
+		return () => {
+			socket.off('user_status', handleStatus);
+		};
+	}, [userName]);
+
+	//  TYPING STATUS
 	useEffect(() => {
 		let typingTimer: NodeJS.Timeout;
 
-		// Listen for typing events from other users
-		socket.on('user_typing', (data) => {
+		const handleTyping = (data: { userName: string }) => {
 			setTypingStatus(`${data.userName} is typing...`);
 
-			// Clear existing timer and set a new one
 			clearTimeout(typingTimer);
 			typingTimer = setTimeout(() => {
 				setTypingStatus('');
 			}, 2000);
-		});
+		};
+
+		socket.on('user_typing', handleTyping);
 
 		return () => {
-			socket.off('user_typing');
+			socket.off('user_typing', handleTyping);
 			clearTimeout(typingTimer);
 		};
 	}, []);
 
+	//  SEND MESSAGE
+	const handleSendMessage = () => {
+		if (!messageInput.trim() || !selectedChatId || !userName) return;
+
+		socket.emit('message', {
+			userName,
+			message: messageInput,
+		});
+
+		sentMessage(selectedChatId, messageInput);
+		setMessageInput('');
+	};
+
+	//  INPUT CHANGE
+	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
+		setMessageInput(e.target.value);
+		socket.emit('typing', { userName });
+	};
+
+	//  NO CHAT SELECTED
 	if (!selectedChat) {
 		return (
 			<div className="flex-1 flex items-center bg-gray-50">
@@ -115,10 +146,21 @@ export function ChatDetail() {
 				>
 					<ChevronLeft className="w-5 h-5" />
 				</Button>
+
 				<h2 className="text-lg font-semibold text-gray-900">
 					{selectedChat.name}
 				</h2>
 			</div>
+
+			{/* Online Notifications */}
+			{notifications.map((note) => (
+				<div
+					key={note.id}
+					className="text-center py-2 text-sm font-semibold text-gray-500"
+				>
+					{note.text}
+				</div>
+			))}
 
 			{/* Messages */}
 			<div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -127,7 +169,9 @@ export function ChatDetail() {
 				{selectedChat.messages?.map((message) => (
 					<div
 						key={message.id}
-						className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'} items-end gap-3`}
+						className={`flex ${
+							message.isOwn ? 'justify-end' : 'justify-start'
+						} items-end gap-3`}
 					>
 						{!message.isOwn && (
 							<div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-semibold shrink-0">
@@ -136,11 +180,14 @@ export function ChatDetail() {
 						)}
 
 						<div
-							className={`flex flex-col ${message.isOwn ? 'items-end' : 'items-start'}`}
+							className={`flex flex-col ${
+								message.isOwn ? 'items-end' : 'items-start'
+							}`}
 						>
 							<span className="text-xs text-gray-500 mb-1">
 								{message.senderName} {message.timestamp}
 							</span>
+
 							<div
 								className={`max-w-xs px-4 py-3 rounded-lg ${
 									message.isOwn
@@ -163,9 +210,9 @@ export function ChatDetail() {
 				<div ref={messagesEndRef} />
 			</div>
 
-			{/* show user typing */}
+			{/* Typing Indicator */}
 			{typingStatus && (
-				<div className=" px-6 py-16 text-center">
+				<div className="px-6 py-4 text-center">
 					<p className="text-sm font-semibold text-gray-500 italic">
 						{typingStatus}
 					</p>
@@ -183,7 +230,7 @@ export function ChatDetail() {
 						placeholder={`Message ${selectedChat.name}`}
 						value={messageInput}
 						onChange={handleInputChange}
-						onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+						onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
 						className="flex-1 bg-gray-100 border-0 rounded-full px-4 py-2 text-sm"
 					/>
 
